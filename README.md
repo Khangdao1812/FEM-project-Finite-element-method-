@@ -58,9 +58,6 @@ F = (EA / L) * [(u_j - u_i)*c + (v_j - v_i)*s]
 
 This F is the internal axial force in the element.
 
-But Finite-Element-Method doesn’t stop at “force in bars”. We need forces at nodes.
-
-
 ## Step 3: Distribute forces to nodes
 
 The element pulls equally and oppositely on its two nodes.
@@ -227,5 +224,9 @@ F = K u
 The entries corresponding to fixed DOFs give reaction forces.
 
 
-
+## Key notes
+- Dictionary look ups are faster than indexing
+- np.ix creates a matrix that is a combination of the elements input in the two input parameters
+- I chose the data representation in order from the node of lowest index -> higher index. This has to be consistent throughout the project. Note that I used min, max so that whether you give me two unordered nodes, it automatically fixes.
+- numpy library has some great commands when it comes to operating w/ list vectors and matrices. Reduce and global u,K for more details
 
