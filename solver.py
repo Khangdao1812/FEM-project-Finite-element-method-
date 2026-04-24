@@ -1,0 +1,87 @@
+import numpy as np
+#First node = node[0]
+def truss_matrix_elements(x1,y1,x2,y2,A,E) : 
+    L = np.sqrt((x1-x2)**2+(y1-y2)**2)
+    k = A*E/L
+    c = (x2-x1)/L
+    s = (y2-y1)/L
+    K = k*np.array([
+        [c*c,c*s,-c*c,-c*s],
+        [c*s,s*s,-c*s,-s*s],
+        [-c*c,-c*s,c*c,c*s],  #So creating matrices are in fact multiple lists grouped toghether??
+        [-c*s,-s*s,c*s,s*s]
+    ])
+    return K,c,s,A,E,L #Define tension is 1->2
+
+def assemble_to_global(big_K,index_1,index_2,K_elements) : 
+    #quy ước[u1x,u1y,u2x,u2y,u3x,u3y,u4x,u4y,...]
+    i = min(index_1, index_2)
+    j = max(index_1, index_2)
+    dofs = [2*i,2*i+1,2*j,2*j+1]
+
+    for y in range(0,4) : 
+        for x in range(0,4) : 
+            big_K[dofs[y],dofs[x]] += K_elements[y,x]
+
+def reduce(K,F,fd) :
+    F_reduced = F[fd]
+    K_reduced = K[np.ix_(fd,fd)]
+    return K_reduced, F_reduced
+    
+def global_u(u_reduced,free_degrees,N_node) : 
+    u=np.zeros(2*N_node)
+    u[free_degrees] = u_reduced
+    return u
+
+def connect(big_node_list,node1,node2,A,E,ele,K_big) : 
+    small_K,c,s,A_local,E_local,L = truss_matrix_elements(*big_node_list[min(node1,node2)],*big_node_list[max(node1,node2)],A,E)
+    assemble_to_global(K_big,node1,node2,small_K) #assemble matrix to global
+    ele[(min(node1,node2),max(node1,node2))] = (c,s,L,A_local,E_local) #auto theo thứ tự lưu -> ko cần đúng tt input
+    #dictionary look ups are faster and shorter in syntax
+    #ele.append((node1,node2,c,s,L,A_local,E_local))
+
+def calculate_axial_force(node1,node2,u_global,elements) : #Không cần nhập node theo thứ tự do sau tra cứu nó tự rearrange lại đúng với thứ tự nhập
+    cosine,sine,L ,A_local,E_local = elements[(min(node1,node2),max(node1,node2))]
+    strain = (cosine*(u_global[2*max(node1,node2)]-u_global[2*min(node1,node2)])+sine*(u_global[2*max(node1,node2)+1]-u_global[2*min(node1,node2)+1]))/L
+    axial_force = A_local*E_local*strain
+    stress = E_local * strain
+    return axial_force,stress
+
+def solve_truss(node_list,free_nodes,connections,load) : 
+    element_list = {}
+    N = len(node_list)
+    K_global= np.zeros((2*N,2*N))
+    free_dofs = []
+
+    for nodes in free_nodes : 
+        i = node_list.index(nodes)
+        free_dofs.extend([2*i,2*i+1])
+    free_dofs = np.array(free_dofs)
+
+    for tuples in connections : 
+        connect(node_list,tuples[0],tuples[1],tuples[2],tuples[3],element_list,K_global) #(node1,node2,A1,E1,into element list, K_global) ###
+
+    K_reduced, F_reduced = reduce(K_global,load,free_dofs) #Nếu không theo thứ tự -> vector, matrix slicing nó bị mess up
+    u_reduced = np.linalg.solve(K_reduced, F_reduced)
+    u= global_u(u_reduced, free_dofs,N)
+    reaction = K_global@u - load
+
+    axial_force = []
+    stress = []
+    UTS = []
+    for connection in connections : #Theo thứ tự, note cho visualization khoẻ.
+        f,s = calculate_axial_force(connection[0],connection[1],u,element_list)
+        stress.append(s)
+        axial_force.append(f)
+        UTS.append(connection[4])
+        #print(f'Axial force node {connection[0]} and {connection[1]} = {f}')
+    return u,reaction,axial_force,stress, UTS
+#elements = [(i,j,c,s,L,A,E)]
+
+#Thứ tự force trong axial list tương ứng với thứ tự trong connections
+
+#Quy ước u = [u1x,u1y,u2x,u2y,..]
+#Cấu trúc dữ liệu chứa connection 2 node : dictionary, (c,s,L,A_local,E_local). Thứ tự 2 node từ min -> max.
+#từng key align với từng connection trong connection list nên ko nhất thiết phải tìm key chứa 2 node trong visualization loop.
+
+
